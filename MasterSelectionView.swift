@@ -23,60 +23,56 @@ struct MasterSelectionView: View {
     private let masters = MasterMockData.masters
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color("BackgroundPrimary")
-                    .ignoresSafeArea()
+        ZStack {
+            Color("BackgroundPrimary")
+                .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    header
+            VStack(spacing: 0) {
+                header
 
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            ForEach(masters) { master in
-                                MasterRowView(
-                                    master: master,
-                                    isSelected: selectedMaster?.id == master.id,
-                                    onSelect: {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            if selectedMaster?.id == master.id {
-                                                selectedMaster = nil
-                                            } else {
-                                                selectedMaster = master
-                                            }
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(masters) { master in
+                            MasterRowView(
+                                master: master,
+                                isSelected: selectedMaster?.id == master.id,
+                                onSelect: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        if selectedMaster?.id == master.id {
+                                            selectedMaster = nil
+                                        } else {
+                                            selectedMaster = master
                                         }
                                     }
-                                )
-
-                                if master.id != masters.last?.id {
-                                    Rectangle()
-                                        .fill(Color("G4").opacity(0.35))
-                                        .frame(height: 1)
                                 }
+                            )
+
+                            if master.id != masters.last?.id {
+                                Rectangle()
+                                    .fill(Color("G4").opacity(0.35))
+                                    .frame(height: 1)
                             }
                         }
-                        .padding(.horizontal, 21)
-                        .padding(.top, 24)
-                        .padding(.bottom, 24)
                     }
-
-                    Spacer(minLength: 0)
-
-                    primaryButton
-                        .padding(.horizontal, 21)
-                        .padding(.bottom, 16)
+                    .padding(.horizontal, 21)
+                    .padding(.top, 24)
+                    .padding(.bottom, 24)
                 }
-            }
-            .navigationBarBackButtonHidden(true)
 
-            // ВАЖНО: здесь передаём source в BookingTimeView
-            .navigationDestination(isPresented: $goToBookingTime) {
-                BookingTimeView(
-                    source: bookingFlow.userRole == .admin ? .admin : .user
-                )
+                Spacer(minLength: 0)
+
+                primaryButton
+                    .padding(.horizontal, 21)
+                    .padding(.bottom, 16)
+            }
+        }
+        // ВАЖНО: здесь НЕТ NavigationStack.
+        // Навигация работает через NavigationStack выше по иерархии
+        .navigationBarBackButtonHidden(true)
+        .navigationDestination(isPresented: $goToBookingTime) {
+            BookingTimeView()
                 .environmentObject(bookingFlow)
                 .navigationBarBackButtonHidden(true)
-            }
         }
     }
 
@@ -105,10 +101,11 @@ struct MasterSelectionView: View {
 
         return Button {
             guard let master = selectedMaster else { return }
-            // Сохраняем мастера в стейт
+            // сохраняем мастера в стейт
             bookingFlow.selectedMaster = master
-            // При смене мастера очищаем дату/время
+            // при смене мастера очищаем дату/время
             bookingFlow.resetDateTime()
+            // триггерим переход к выбору времени
             goToBookingTime = true
         } label: {
             ZStack {
@@ -210,4 +207,12 @@ enum MasterMockData {
             timeSlots: ["11:00", "12:30", "18:00", "18:30", "20:00"]
         )
     ]
+}
+
+#Preview {
+    NavigationStack {
+        MasterSelectionView()
+            .environmentObject(BookingFlowState())
+            .preferredColorScheme(.dark)
+    }
 }

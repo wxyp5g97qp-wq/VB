@@ -94,7 +94,7 @@ struct BookingSummaryView: View {
 
                         // ДАТА И ВРЕМЯ
                         NavigationLink {
-                            BookingTimeView(source: .summary)
+                            BookingTimeView()          // ← БЕЗ параметров
                         } label: {
                             let dateText: String? = {
                                 if let date = bookingFlow.selectedDate,
