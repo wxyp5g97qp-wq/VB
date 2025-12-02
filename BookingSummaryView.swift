@@ -4,8 +4,9 @@ struct BookingSummaryView: View {
     @EnvironmentObject var bookingFlow: BookingFlowState
     @Environment(\.dismiss) private var dismiss
 
-    /// вызывается после "Ок" в алерте (для пользователя),
-    /// админ после записи просто закрывает экран
+    /// Вызывается после «Ок» в алерте:
+    /// - для пользователя: переключаемся на вкладку "Мои записи"
+    /// - для админа: закрываем флоу создания записи / возвращаемся на экран "Записи"
     let onSuccess: (() -> Void)?
 
     init(onSuccess: (() -> Void)? = nil) {
@@ -14,6 +15,10 @@ struct BookingSummaryView: View {
 
     @State private var showSuccessAlert: Bool = false
     @State private var clientPhone: String = ""
+
+    private var isUser: Bool {
+        bookingFlow.userRole == .user
+    }
 
     // форма заполнена полностью?
     private var isFormComplete: Bool {
@@ -32,6 +37,17 @@ struct BookingSummaryView: View {
                    bookingFlow.selectedTime != nil &&
                    !clientPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    // Текст алерта
+    private var alertTitle: String {
+        isUser ? "Заявка отправлена" : "Запись создана"
+    }
+
+    private var alertMessage: String {
+        isUser
+        ? "Мы свяжемся с вами для подтверждения записи."
+        : "Запись успешно добавлена в список."
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -99,7 +115,7 @@ struct BookingSummaryView: View {
                         .buttonStyle(.plain)
 
                         // АВТО — только для обычного пользователя
-                        if bookingFlow.userRole == .user {
+                        if isUser {
                             NavigationLink {
                                 SelectCarView()
                             } label: {
@@ -113,7 +129,7 @@ struct BookingSummaryView: View {
                         }
 
                         // Телефон клиента — только для админа
-                        if bookingFlow.userRole == .admin {
+                        if !isUser {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Телефон клиента")
                                     .typography(AppFont.text)
@@ -130,6 +146,7 @@ struct BookingSummaryView: View {
                                             .fill(Color("W2"))
                                     )
                             }
+                            .padding(.horizontal, 21)
                         }
                     }
                     .padding(.horizontal, 21)
@@ -156,7 +173,7 @@ struct BookingSummaryView: View {
                 .disabled(!isFormComplete)
             }
         }
-        .alert("Заявка отправлена", isPresented: $showSuccessAlert) {
+        .alert(alertTitle, isPresented: $showSuccessAlert) {
             Button("Ок") {
                 if let onSuccess {
                     onSuccess()
@@ -165,7 +182,7 @@ struct BookingSummaryView: View {
                 }
             }
         } message: {
-            Text("Мы свяжемся с вами для подтверждения записи.")
+            Text(alertMessage)
         }
         .navigationBarBackButtonHidden(true)
     }
@@ -174,7 +191,9 @@ struct BookingSummaryView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Button { dismiss() } label: {
+            Button {
+                dismiss()
+            } label: {
                 Image("icon_back")
                     .renderingMode(.template)
                     .foregroundColor(Color("W2"))
@@ -235,7 +254,7 @@ struct BookingSummaryView: View {
     private func handleConfirm() {
         switch bookingFlow.userRole {
         case .user:
-            // обычный пользователь
+            // обычный пользователь: сразу подтверждаем текущую запись
             bookingFlow.confirmCurrentBooking()
             showSuccessAlert = true
 
@@ -262,7 +281,7 @@ struct BookingSummaryView: View {
                 price: nil
             )
 
-            dismiss()
+            showSuccessAlert = true
         }
     }
 }

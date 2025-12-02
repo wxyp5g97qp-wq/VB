@@ -68,10 +68,14 @@ struct MasterSelectionView: View {
                 }
             }
             .navigationBarBackButtonHidden(true)
+
+            // ВАЖНО: здесь передаём source в BookingTimeView
             .navigationDestination(isPresented: $goToBookingTime) {
-                BookingTimeView()
-                    .environmentObject(bookingFlow)
-                    .navigationBarBackButtonHidden(true)
+                BookingTimeView(
+                    source: bookingFlow.userRole == .admin ? .admin : .user
+                )
+                .environmentObject(bookingFlow)
+                .navigationBarBackButtonHidden(true)
             }
         }
     }

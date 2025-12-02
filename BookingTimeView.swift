@@ -1,10 +1,11 @@
 import SwiftUI
 
-// MARK: - Откуда открыли экран времени
+// MARK: - Откуда открыт выбор времени
 
 enum BookingTimeSource {
-    case mainFlow      // путь пользователя: мастер -> время -> авто -> summary
-    case summary       // путь с экрана "Проверьте данные" (и для юзера, и для админа)
+    case user      // обычный пользователь (после времени -> выбор авто)
+    case admin     // админ (после времени -> общий BookingSummaryView)
+    case summary   // открыт из BookingSummaryView (просто обновить дату/время и закрыть)
 }
 
 // MARK: - Экран «Выберите время»
@@ -15,17 +16,13 @@ struct BookingTimeView: View {
 
     let source: BookingTimeSource
 
-    init(source: BookingTimeSource = .mainFlow) {
-        self.source = source
-    }
-
     @State private var currentMonthIndex: Int = 0
     @State private var selectedDate: Date? = nil
     @State private var selectedTime: String? = nil
     @State private var expandedParts: Set<PartOfDay> = Set(PartOfDay.allCases)
 
-    // переход на выбор авто (только для обычного пользователя в основном флоу)
-    @State private var goToSelectCar: Bool = false
+    /// флаг для push-а следующего экрана
+    @State private var goNext: Bool = false
 
     private let calendar = BookingCalendarMock.calendar
     private let months = BookingCalendarMock.months
@@ -88,25 +85,18 @@ struct BookingTimeView: View {
                           let date = selectedDate,
                           let time = selectedTime else { return }
 
-                    // сохраняем выбор
+                    // сохраняем выбор в общий стейт
                     bookingFlow.selectedDate = date
                     bookingFlow.selectedTime = time
 
                     switch source {
-                    case .mainFlow:
-                        if bookingFlow.userRole == .user {
-                            // пользователь дальше выбирает авто
-                            goToSelectCar = true
-                        } else {
-                            // на всякий случай, если админ открыл этот путь
-                            dismiss()
-                        }
-
                     case .summary:
-                        // пришли с экрана "Проверьте данные" — просто назад
+                        // открыли из BookingSummaryView — просто закрываемся
                         dismiss()
+                    case .user, .admin:
+                        // идём на следующий экран
+                        goNext = true
                     }
-
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12)
@@ -131,14 +121,24 @@ struct BookingTimeView: View {
             selectedDate = bookingFlow.selectedDate
             selectedTime = bookingFlow.selectedTime
         }
-        .navigationDestination(isPresented: $goToSelectCar) {
-            // выбор авто только для пользователя
-            SelectCarView()
-                .environmentObject(bookingFlow)
+        .navigationDestination(isPresented: $goNext) {
+            switch source {
+            case .user:
+                // обычный пользователь -> выбор авто
+                SelectCarView()
+                    .environmentObject(bookingFlow)
+            case .admin:
+                // админ -> общий BookingSummaryView c полем телефона
+                BookingSummaryView()
+                    .environmentObject(bookingFlow)
+            case .summary:
+                // сюда не зайдём, т.к. при .summary мы не делаем goNext
+                EmptyView()
+            }
         }
     }
 
-    // MARK: - UI части
+    // MARK: - Шапка
 
     private var header: some View {
         HStack(spacing: 12) {
@@ -157,6 +157,8 @@ struct BookingTimeView: View {
         .padding(.horizontal, 21)
         .padding(.top, 24)
     }
+
+    // MARK: - Кнопка выбора месяца
 
     private var monthPickerRow: some View {
         HStack {
@@ -190,6 +192,8 @@ struct BookingTimeView: View {
         }
         .padding(.horizontal, 21)
     }
+
+    // MARK: - Легенда
 
     private var legend: some View {
         HStack(spacing: 24) {
@@ -434,7 +438,7 @@ struct CalendarMonthView: View {
 
 #Preview {
     NavigationStack {
-        BookingTimeView()
+        BookingTimeView(source: .user)
             .environmentObject(BookingFlowState())
             .preferredColorScheme(.dark)
     }

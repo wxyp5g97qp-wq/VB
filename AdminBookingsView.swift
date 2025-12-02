@@ -107,14 +107,24 @@ struct AdminBookingsView: View {
             Text("Вы действительно хотите отменить запись?")
         }
 
-        // MARK: - sheet добавления записи (используем общий BookingSummaryView)
+        // MARK: - sheet добавления записи
         .sheet(isPresented: $showAddSheet) {
             NavigationStack {
-                BookingSummaryView(onSuccess: {
-                    // после создания записи просто закрываем sheet
-                    showAddSheet = false
-                })
+                BookingSummaryView(
+                    onSuccess: {
+                        // 1) закрываем модалку
+                        showAddSheet = false
+                        // 2) на всякий случай очищаем временный выбор
+                        bookingFlow.resetAll()
+                    }
+                )
                 .environmentObject(bookingFlow)
+                .onAppear {
+                    // важный момент: при заходе админом ставим нужную роль
+                    bookingFlow.userRole = .admin
+                    // и чистим предыдущий выбор
+                    bookingFlow.resetAll()
+                }
             }
         }
     }
@@ -131,9 +141,6 @@ struct AdminBookingsView: View {
                 .padding(.horizontal, 21)
 
             Button {
-                // включаем «режим админа» для экрана сводки
-                bookingFlow.isAdminBookingFlow = true
-                bookingFlow.resetAll()
                 showAddSheet = true
             } label: {
                 HStack {
@@ -270,9 +277,11 @@ private struct AdminBookingCard: View {
                     .typography(AppFont.roll1)
                     .foregroundColor(Color("B4"))
 
-                Text(booking.carPlate)
-                    .typography(AppFont.subtitle)
-                    .foregroundColor(Color("W2"))
+                if let phone = booking.clientPhone, !phone.isEmpty {
+                    Text(phone)
+                        .typography(AppFont.subtitle)
+                        .foregroundColor(Color("W2"))
+                }
 
                 Text(Self.dateFormatter.string(from: booking.date))
                     .typography(AppFont.icon)
@@ -368,4 +377,14 @@ private struct AdminBookingCard: View {
             return "Сумма не указана"
         }
     }
+}
+
+// MARK: - Preview
+
+#Preview {
+    NavigationStack {
+        AdminBookingsView()
+            .environmentObject(BookingFlowState())
+    }
+    .preferredColorScheme(.dark)
 }

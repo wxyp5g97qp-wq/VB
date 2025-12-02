@@ -6,7 +6,9 @@ struct SelectCarView: View {
     @EnvironmentObject var bookingFlow: BookingFlowState
 
     @State private var selectedCarId: UUID? = nil
+    @State private var goToSummary: Bool = false
 
+    // Берём список машин из общего стейта
     private var cars: [CarItem] {
         bookingFlow.cars
     }
@@ -33,9 +35,21 @@ struct SelectCarView: View {
         }
         .navigationBarBackButtonHidden(true)
         .onAppear {
+            // если машина уже выбрана — подсветим её
             if let current = bookingFlow.selectedCar {
                 selectedCarId = current.id
             }
+        }
+        // Переход к BookingSummaryView для пользователя
+        .navigationDestination(isPresented: $goToSummary) {
+            BookingSummaryView(
+                onSuccess: {
+                    // после успешной записи — переключаемся на вкладку "Мои записи"
+                    bookingFlow.selectedTab = .records
+                }
+            )
+            .environmentObject(bookingFlow)
+            .navigationBarBackButtonHidden(true)
         }
     }
 
@@ -133,7 +147,7 @@ struct SelectCarView: View {
         return Button {
             guard let car = selectedCar else { return }
             bookingFlow.selectedCar = car
-            dismiss()   // и для пользователя, и для админа просто закрываем экран
+            goToSummary = true
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 16)
