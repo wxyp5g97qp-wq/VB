@@ -3,11 +3,15 @@ import SwiftUI
 // MARK: - Откуда открыт экран выбора даты/времени
 
 enum BookingTimeSource {
-    /// Открыт после выбора мастера (новый флоу записи)
-    case fromMaster
+    /// Пользователь создаёт новую запись (из MasterSelectionView),
+    /// после выбора времени идём на выбор авто.
+    case userFlowFromMaster
 
-    /// Открыт из экрана BookingSummaryView для редактирования даты/времени
-    case fromSummary
+    /// Пользователь редактирует дату/время из BookingSummaryView.
+    case userFromSummary
+
+    /// Админ редактирует дату/время из BookingSummaryView.
+    case adminFromSummary
 }
 
 // MARK: - Экран «Выберите время»
@@ -18,19 +22,14 @@ struct BookingTimeView: View {
 
     let source: BookingTimeSource
 
-    // Удобный init: по умолчанию считаем, что пришли «после мастера»
-    init(source: BookingTimeSource = .fromMaster) {
-        self.source = source
-    }
-
     @State private var currentMonthIndex: Int = 0
     @State private var selectedDate: Date? = nil
     @State private var selectedTime: String? = nil
     @State private var expandedParts: Set<PartOfDay> = Set(PartOfDay.allCases)
 
-    /// Навигация вперёд:
-    /// - для пользователя — к SelectCarView
-    /// - для админа — к BookingSummaryView
+    /// Навигация вперёд
+    /// - userFlowFromMaster + user  -> SelectCarView
+    /// - userFlowFromMaster + admin -> BookingSummaryView
     @State private var goToUserCarSelection: Bool = false
     @State private var goToAdminSummary: Bool = false
 
@@ -113,11 +112,10 @@ struct BookingTimeView: View {
             selectedTime = nil
         }
         .onAppear {
-            // подтягиваем уже выбранные дату/время, если они есть
             selectedDate = bookingFlow.selectedDate
             selectedTime = bookingFlow.selectedTime
         }
-        // Навигация дальше — только когда мы пришли "после мастера"
+        // навигация вперёд
         .navigationDestination(isPresented: $goToUserCarSelection) {
             SelectCarView()
                 .environmentObject(bookingFlow)
@@ -140,19 +138,18 @@ struct BookingTimeView: View {
         bookingFlow.selectedTime = time
 
         switch source {
-        case .fromMaster:
-            // Новый флоу: дальше действия зависят от роли
-            switch bookingFlow.userRole {
-            case .user:
-                // Пользователь — дальше выбирает авто
+        case .userFlowFromMaster:
+            // после выбора времени:
+            // - у пользователя идём на выбор авто
+            // - у админа — на summary
+            if bookingFlow.userRole == .user {
                 goToUserCarSelection = true
-            case .admin:
-                // Админ — сразу на общий Summary с телефоном
+            } else {
                 goToAdminSummary = true
             }
 
-        case .fromSummary:
-            // Редактирование из Summary — просто возвращаемся назад
+        case .userFromSummary, .adminFromSummary:
+            // открывали экран из BookingSummaryView — просто закрываемся
             dismiss()
         }
     }
@@ -382,7 +379,7 @@ struct CalendarMonthView: View {
         let weekdaySymbols = weekdayShortSymbols()
 
         LazyVGrid(columns: columns, spacing: 6) {
-            // Дни недели
+            // дни недели
             ForEach(weekdaySymbols, id: \.self) { symbol in
                 Text(symbol)
                     .typography(AppFont.roll1)
@@ -390,13 +387,13 @@ struct CalendarMonthView: View {
                     .frame(maxWidth: .infinity)
             }
 
-            // Пустые ячейки до первого числа
+            // пустые ячейки до первого числа
             ForEach(0..<firstDayOffset, id: \.self) { _ in
                 Color.clear
                     .frame(height: 32)
             }
 
-            // Дни месяца
+            // дни месяца
             ForEach(1...daysCount, id: \.self) { day in
                 dayCell(day: day)
             }
@@ -459,7 +456,7 @@ struct CalendarMonthView: View {
 
 #Preview {
     NavigationStack {
-        BookingTimeView(source: .fromMaster)
+        BookingTimeView(source: .userFlowFromMaster)
             .environmentObject(BookingFlowState())
             .preferredColorScheme(.dark)
     }

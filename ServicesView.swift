@@ -104,6 +104,7 @@ struct ServicesView: View {
                                     bookingFlow.selectedService = service
                                     // При смене услуги чистим мастера и дату/время
                                     bookingFlow.resetMaster()
+                                    // Открываем выбор мастера
                                     showMasterSelection = true
                                 }
                             )
@@ -113,8 +114,10 @@ struct ServicesView: View {
             }
         }
         .fullScreenCover(isPresented: $showMasterSelection) {
-            MasterSelectionView()
-                .environmentObject(bookingFlow)
+            NavigationStack {
+                MasterSelectionView()
+                    .environmentObject(bookingFlow)
+            }
         }
     }
 }

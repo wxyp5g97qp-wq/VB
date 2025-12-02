@@ -269,7 +269,7 @@ final class BookingFlowState: ObservableObject {
         selectedDate = nil
         selectedTime = nil
     }
-
+    
     func resetCar() {
         selectedCar = nil
     }

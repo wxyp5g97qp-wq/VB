@@ -16,20 +16,23 @@ struct AdminBookingsView: View {
     @State private var dateFilter: AdminBookingDateFilter = .today
     @State private var masterFilter: String? = nil
 
-    /// IDs записей, по которым уже «связались»
+    // для "Связаться"
     @State private var contactedIds: Set<UUID> = []
 
-    /// Алерт подтверждения цены
+    // алерт цены
     @State private var showPriceAlert = false
     @State private var priceInput: String = ""
     @State private var bookingForPrice: Booking?
 
-    /// Алерт отмены
+    // алерт отмены
     @State private var showCancelAlert = false
     @State private var bookingForCancel: Booking?
 
-    /// sheet «Добавить запись»
+    // sheet «Добавить запись»
     @State private var showAddSheet = false
+
+    // алерт после закрытия sheet
+    @State private var showAdminSuccessAlert = false
 
     var body: some View {
         ZStack {
@@ -38,7 +41,6 @@ struct AdminBookingsView: View {
 
             VStack(spacing: 16) {
                 header
-
                 filtersBar
                     .padding(.horizontal, 21)
 
@@ -77,7 +79,8 @@ struct AdminBookingsView: View {
                 }
             }
         }
-        // MARK: - alert с вводом суммы
+
+        // MARK: price alert
         .alert("Укажите предварительную сумму", isPresented: $showPriceAlert) {
             TextField("Например: 6000", text: $priceInput)
                 .keyboardType(.numberPad)
@@ -89,12 +92,12 @@ struct AdminBookingsView: View {
                 bookingFlow.updateBookingPrice(value, for: booking)
             }
 
-            Button("Отмена", role: .cancel) { }
+            Button("Отмена", role: .cancel) {}
         } message: {
             Text("Сумма не окончательная и может быть изменена при осмотре машины.")
         }
 
-        // MARK: - alert отмены
+        // MARK: cancel alert
         .alert("Отменить запись?", isPresented: $showCancelAlert) {
             Button("Отменить запись", role: .destructive) {
                 if let booking = bookingForCancel {
@@ -102,21 +105,35 @@ struct AdminBookingsView: View {
                     contactedIds.remove(booking.id)
                 }
             }
-            Button("Нет", role: .cancel) { }
+            Button("Нет", role: .cancel) {}
         } message: {
             Text("Вы действительно хотите отменить запись?")
         }
 
-        // MARK: - sheet добавления записи админом
+        // MARK: sheet добавления записи админом
         .sheet(isPresented: $showAddSheet) {
             NavigationStack {
                 BookingSummaryView {
-                    // Это onSuccess из BookingSummaryView:
-                    // закрываем модалку и остаёмся на экране "Записи"
+                    // 1. Сбрасываем весь текущий выбор, чтобы ничего не триггерило навигацию
+                    bookingFlow.resetAll()
+
+                    // 2. Закрываем sheet
                     showAddSheet = false
+
+                    // 3. Показываем алерт «Запись успешно создана»
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showAdminSuccessAlert = true
+                    }
                 }
                 .environmentObject(bookingFlow)
             }
+        }
+
+        // MARK: финальный алерт после успешной записи
+        .alert("Запись успешно создана", isPresented: $showAdminSuccessAlert) {
+            Button("Ок") {}
+        } message: {
+            Text("Клиент добавлен в список записей.")
         }
     }
 
@@ -124,14 +141,19 @@ struct AdminBookingsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 16) {
+
             Text("Записи")
                 .typography(AppFont.lead1)
                 .foregroundColor(Color("W2"))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 24)
                 .padding(.horizontal, 21)
+                .padding(.top, 24)
 
             Button {
+                // Гарантируем что флоу админа запускается корректно
+                bookingFlow.userRole = .admin
+                bookingFlow.resetAll()
+
                 showAddSheet = true
             } label: {
                 HStack {
@@ -153,12 +175,11 @@ struct AdminBookingsView: View {
         }
     }
 
-    // MARK: - Панель фильтров
+    // MARK: filters
 
     private var filtersBar: some View {
         HStack(spacing: 8) {
 
-            // Фильтр по дате
             Menu {
                 Picker("Дата", selection: $dateFilter) {
                     ForEach(AdminBookingDateFilter.allCases, id: \.self) { filter in
@@ -170,7 +191,6 @@ struct AdminBookingsView: View {
                     Text(dateFilter.rawValue)
                         .typography(AppFont.roll1)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .bold))
                 }
                 .foregroundColor(Color("W2"))
                 .padding(.horizontal, 14)
@@ -181,26 +201,18 @@ struct AdminBookingsView: View {
                 )
             }
 
-            // Фильтр по мастеру
             Menu {
-                Button("Все мастера") {
-                    masterFilter = nil
-                }
+                Button("Все мастера") { masterFilter = nil }
 
-                let masters = Set(bookingFlow.bookings.map { $0.masterName })
-                    .sorted()
-
-                ForEach(masters, id: \.self) { name in
-                    Button(name) {
-                        masterFilter = name
-                    }
+                let masters = Set(bookingFlow.bookings.map { $0.masterName }).sorted()
+                ForEach(masters, id: \.self) { m in
+                    Button(m) { masterFilter = m }
                 }
             } label: {
                 HStack {
                     Text(masterFilter ?? "Все мастера")
                         .typography(AppFont.roll1)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .bold))
                 }
                 .foregroundColor(Color("W2"))
                 .padding(.horizontal, 14)
@@ -215,7 +227,7 @@ struct AdminBookingsView: View {
         }
     }
 
-    // MARK: - Отфильтрованный список
+    // MARK: фильтрация записей
 
     private var filteredBookings: [Booking] {
         let calendar = Calendar.current
@@ -233,17 +245,16 @@ struct AdminBookingsView: View {
                 }
             }
             .filter { booking in
-                if let master = masterFilter {
-                    return booking.masterName == master
-                } else {
-                    return true
+                if let masterFilter {
+                    return booking.masterName == masterFilter
                 }
+                return true
             }
             .sorted { $0.date < $1.date }
     }
 }
 
-// MARK: - Карточка записи для админа
+// MARK: - Карточка записи
 
 private struct AdminBookingCard: View {
     let booking: Booking
@@ -252,9 +263,9 @@ private struct AdminBookingCard: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
-    private static let dateFormatter: DateFormatter = {
+    private static let df: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "ru_RU")
+        f.locale = .init(identifier: "ru_RU")
         f.dateFormat = "dd MMMM в HH:mm"
         return f
     }()
@@ -262,8 +273,8 @@ private struct AdminBookingCard: View {
     var body: some View {
         HStack(spacing: 12) {
 
-            // Левая часть — карточка записи (как у пользователя)
             VStack(alignment: .leading, spacing: 6) {
+
                 Text(booking.serviceTitle)
                     .typography(AppFont.roll1)
                     .foregroundColor(Color("B4"))
@@ -274,7 +285,7 @@ private struct AdminBookingCard: View {
                         .foregroundColor(Color("W2"))
                 }
 
-                Text(Self.dateFormatter.string(from: booking.date))
+                Text(Self.df.string(from: booking.date))
                     .typography(AppFont.icon)
                     .foregroundColor(Color("G3"))
 
@@ -287,54 +298,34 @@ private struct AdminBookingCard: View {
                     .foregroundColor(Color("W2"))
             }
             .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color("W2"))
-            )
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color("W2")))
 
-            // Правая колонка кнопок
             VStack(spacing: 8) {
-
-                Button {
-                    onConfirm()
-                } label: {
+                Button { onConfirm() } label: {
                     Text("Подтвердить")
                         .typography(AppFont.roll1)
                         .foregroundColor(Color("B4"))
                         .frame(width: 110, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color("W2"))
-                        )
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color("W2")))
                 }
                 .buttonStyle(.plain)
 
-                Button {
-                    onContact()
-                } label: {
+                Button { onContact() } label: {
                     Text("Связаться")
                         .typography(AppFont.roll1)
                         .foregroundColor(Color("W2"))
                         .frame(width: 110, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color("B3"))
-                        )
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color("B3")))
                 }
                 .buttonStyle(.plain)
 
                 if isContacted {
-                    Button {
-                        onCancel()
-                    } label: {
+                    Button { onCancel() } label: {
                         Text("Отменить")
                             .typography(AppFont.roll1)
                             .foregroundColor(Color("W2"))
                             .frame(width: 110, height: 36)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color("B1"))
-                            )
+                            .background(RoundedRectangle(cornerRadius: 12).fill(Color("B1")))
                     }
                     .buttonStyle(.plain)
                 }
@@ -344,12 +335,9 @@ private struct AdminBookingCard: View {
 
     private var statusTitle: String {
         switch booking.status {
-        case .active:
-            return "Подтверждена"
-        case .cancelled:
-            return "Отменена"
-        case .completed:
-            return "Завершена"
+        case .active:    return "Подтверждена"
+        case .cancelled: return "Отменена"
+        case .completed: return "Завершена"
         }
     }
 
@@ -362,11 +350,8 @@ private struct AdminBookingCard: View {
     }
 
     private var priceText: String {
-        if let price = booking.price {
-            return "\(price) ₽"
-        } else {
-            return "Сумма не указана"
-        }
+        if let price = booking.price { return "\(price) ₽" }
+        return "Сумма не указана"
     }
 }
 

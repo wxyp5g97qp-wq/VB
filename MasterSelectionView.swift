@@ -69,9 +69,8 @@ struct MasterSelectionView: View {
             }
             .navigationBarBackButtonHidden(true)
             .navigationDestination(isPresented: $goToBookingTime) {
-                // Для любого пользователя (user / admin) источник один:
-                // «после выбора мастера». Дальнейший флоу решает BookingTimeView.
-                BookingTimeView(source: .fromMaster)
+                // один общий source — дальше поведение решает BookingTimeView по роли
+                BookingTimeView(source: .userFlowFromMaster)
                     .environmentObject(bookingFlow)
                     .navigationBarBackButtonHidden(true)
             }
@@ -107,12 +106,11 @@ struct MasterSelectionView: View {
 
         return Button {
             guard let master = selectedMaster else { return }
-
-            // Сохраняем выбранного мастера в общий стейт
+            // Сохраняем мастера в стейт
             bookingFlow.selectedMaster = master
-            // При смене мастера сбрасываем ранее выбранную дату/время
+            // При смене мастера очищаем дату/время
             bookingFlow.resetDateTime()
-            // Переходим на экран выбора даты/времени
+            // Переход на выбор времени
             goToBookingTime = true
         } label: {
             ZStack {

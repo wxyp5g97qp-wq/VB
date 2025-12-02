@@ -5,7 +5,7 @@ struct BookingSummaryView: View {
     @Environment(\.dismiss) private var dismiss
 
     /// Вызывается после успешного создания записи и нажатия "Ок" в алерте.
-    /// - для пользователя: обычно переключаем таб на "Мои записи"
+    /// - для пользователя: переключаем таб на "Мои записи"
     /// - для админа: закрываем sheet "Добавить запись" и остаёмся на экране AdminBookingsView
     let onSuccess: (() -> Void)?
 
@@ -67,6 +67,8 @@ struct BookingSummaryView: View {
 
                         // МАСТЕР
                         NavigationLink {
+                            // просто переходим на выбор мастера;
+                            // дальнейший флоу решает MasterSelectionView + BookingTimeView
                             MasterSelectionView()
                         } label: {
                             editableRow(
@@ -79,7 +81,15 @@ struct BookingSummaryView: View {
 
                         // ДАТА И ВРЕМЯ
                         NavigationLink {
-                            BookingTimeView(source: .fromSummary)
+                            // источник для BookingTimeView зависит от роли
+                            let timeSource: BookingTimeSource = {
+                                switch bookingFlow.userRole {
+                                case .user:  return .userFromSummary
+                                case .admin: return .adminFromSummary
+                                }
+                            }()
+
+                            BookingTimeView(source: timeSource)
                         } label: {
                             let dateText: String? = {
                                 if let date = bookingFlow.selectedDate,
@@ -164,9 +174,9 @@ struct BookingSummaryView: View {
         ) {
             Button("Ок") {
                 if let onSuccess {
-                    onSuccess()          // здесь мы закрываем sheet у админа / переключаем таб у пользователя
+                    onSuccess()
                 } else {
-                    dismiss()            // запасной вариант
+                    dismiss()
                 }
             }
         } message: {
@@ -246,12 +256,10 @@ struct BookingSummaryView: View {
     private func handleConfirm() {
         switch bookingFlow.userRole {
         case .user:
-            // обычный пользователь — всё как раньше
             bookingFlow.confirmCurrentBooking()
             showSuccessAlert = true
 
         case .admin:
-            // админ создаёт запись на указанный номер
             guard
                 let service = bookingFlow.selectedService,
                 let master = bookingFlow.selectedMaster,
