@@ -4,9 +4,9 @@ struct BookingSummaryView: View {
     @EnvironmentObject var bookingFlow: BookingFlowState
     @Environment(\.dismiss) private var dismiss
 
-    /// Вызывается после «Ок» в алерте:
-    /// - для пользователя: переключаемся на вкладку "Мои записи"
-    /// - для админа: закрываем флоу создания записи / возвращаемся на экран "Записи"
+    /// Вызывается после успешного создания записи и нажатия "Ок" в алерте.
+    /// - для пользователя: обычно переключаем таб на "Мои записи"
+    /// - для админа: закрываем sheet "Добавить запись" и остаёмся на экране AdminBookingsView
     let onSuccess: (() -> Void)?
 
     init(onSuccess: (() -> Void)? = nil) {
@@ -15,10 +15,6 @@ struct BookingSummaryView: View {
 
     @State private var showSuccessAlert: Bool = false
     @State private var clientPhone: String = ""
-
-    private var isUser: Bool {
-        bookingFlow.userRole == .user
-    }
 
     // форма заполнена полностью?
     private var isFormComplete: Bool {
@@ -39,18 +35,7 @@ struct BookingSummaryView: View {
         }
     }
 
-    // Текст алерта
-    private var alertTitle: String {
-        isUser ? "Заявка отправлена" : "Запись создана"
-    }
-
-    private var alertMessage: String {
-        isUser
-        ? "Мы свяжемся с вами для подтверждения записи."
-        : "Запись успешно добавлена в список."
-    }
-
-    private static let dateFormatter: DateFormatter = {
+    static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ru_RU")
         f.dateFormat = "dd MMMM yyyy"
@@ -94,7 +79,7 @@ struct BookingSummaryView: View {
 
                         // ДАТА И ВРЕМЯ
                         NavigationLink {
-                            BookingTimeView()          // ← БЕЗ параметров
+                            BookingTimeView(source: .fromSummary)
                         } label: {
                             let dateText: String? = {
                                 if let date = bookingFlow.selectedDate,
@@ -115,7 +100,7 @@ struct BookingSummaryView: View {
                         .buttonStyle(.plain)
 
                         // АВТО — только для обычного пользователя
-                        if isUser {
+                        if bookingFlow.userRole == .user {
                             NavigationLink {
                                 SelectCarView()
                             } label: {
@@ -129,7 +114,7 @@ struct BookingSummaryView: View {
                         }
 
                         // Телефон клиента — только для админа
-                        if !isUser {
+                        if bookingFlow.userRole == .admin {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Телефон клиента")
                                     .typography(AppFont.text)
@@ -173,16 +158,23 @@ struct BookingSummaryView: View {
                 .disabled(!isFormComplete)
             }
         }
-        .alert(alertTitle, isPresented: $showSuccessAlert) {
+        .alert(
+            bookingFlow.userRole == .admin ? "Запись создана" : "Заявка отправлена",
+            isPresented: $showSuccessAlert
+        ) {
             Button("Ок") {
                 if let onSuccess {
-                    onSuccess()
+                    onSuccess()          // здесь мы закрываем sheet у админа / переключаем таб у пользователя
                 } else {
-                    dismiss()
+                    dismiss()            // запасной вариант
                 }
             }
         } message: {
-            Text(alertMessage)
+            if bookingFlow.userRole == .admin {
+                Text("Клиент добавлен в список записей.")
+            } else {
+                Text("Мы свяжемся с вами для подтверждения записи.")
+            }
         }
         .navigationBarBackButtonHidden(true)
     }
@@ -254,7 +246,7 @@ struct BookingSummaryView: View {
     private func handleConfirm() {
         switch bookingFlow.userRole {
         case .user:
-            // обычный пользователь: сразу подтверждаем текущую запись
+            // обычный пользователь — всё как раньше
             bookingFlow.confirmCurrentBooking()
             showSuccessAlert = true
 

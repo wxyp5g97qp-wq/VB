@@ -1,24 +1,42 @@
 import SwiftUI
 
+// MARK: - Откуда открыт экран выбора даты/времени
+
+enum BookingTimeSource {
+    /// Открыт после выбора мастера (новый флоу записи)
+    case fromMaster
+
+    /// Открыт из экрана BookingSummaryView для редактирования даты/времени
+    case fromSummary
+}
+
 // MARK: - Экран «Выберите время»
 
 struct BookingTimeView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var bookingFlow: BookingFlowState
 
+    let source: BookingTimeSource
+
+    // Удобный init: по умолчанию считаем, что пришли «после мастера»
+    init(source: BookingTimeSource = .fromMaster) {
+        self.source = source
+    }
+
     @State private var currentMonthIndex: Int = 0
     @State private var selectedDate: Date? = nil
     @State private var selectedTime: String? = nil
     @State private var expandedParts: Set<PartOfDay> = Set(PartOfDay.allCases)
 
-    // переходы дальше
-    @State private var goToCarSelection: Bool = false
-    @State private var goToSummary: Bool = false
+    /// Навигация вперёд:
+    /// - для пользователя — к SelectCarView
+    /// - для админа — к BookingSummaryView
+    @State private var goToUserCarSelection: Bool = false
+    @State private var goToAdminSummary: Bool = false
 
     private let calendar = BookingCalendarMock.calendar
     private let months = BookingCalendarMock.months
 
-    // слоты времени по частям дня
     private let timeSlots: [PartOfDay: [String]] = [
         .morning: ["09:00", "09:30", "10:00", "11:30"],
         .day:     ["14:00", "15:30", "16:00"],
@@ -39,14 +57,9 @@ struct BookingTimeView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
-
-                // ШАПКА
                 header
-
-                // МЕСЯЦ
                 monthPickerRow
 
-                // КАЛЕНДАРЬ
                 CalendarMonthView(
                     month: currentMonth,
                     selectedDate: $selectedDate
@@ -54,10 +67,8 @@ struct BookingTimeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 21)
 
-                // ЛЕГЕНДА
                 legend
 
-                // ВРЕМЯ (утро/день/вечер)
                 VStack(spacing: 16) {
                     ForEach(PartOfDay.allCases, id: \.self) { part in
                         TimeSectionView(
@@ -79,23 +90,8 @@ struct BookingTimeView: View {
 
                 Spacer(minLength: 0)
 
-                // КНОПКА «Далее»
                 Button {
-                    guard isFormValid,
-                          let date = selectedDate,
-                          let time = selectedTime else { return }
-
-                    // сохраняем выбор
-                    bookingFlow.selectedDate = date
-                    bookingFlow.selectedTime = time
-
-                    // Куда идти дальше
-                    switch bookingFlow.userRole {
-                    case .user:
-                        goToCarSelection = true
-                    case .admin:
-                        goToSummary = true
-                    }
+                    confirmTime()
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12)
@@ -113,24 +109,51 @@ struct BookingTimeView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        // при смене даты сбрасываем время
         .onChange(of: selectedDate) { _, _ in
             selectedTime = nil
         }
         .onAppear {
-            // подтягиваем уже выбранные дату/время
+            // подтягиваем уже выбранные дату/время, если они есть
             selectedDate = bookingFlow.selectedDate
             selectedTime = bookingFlow.selectedTime
         }
-        // навигация для пользователя (после времени → выбор авто)
-        .navigationDestination(isPresented: $goToCarSelection) {
+        // Навигация дальше — только когда мы пришли "после мастера"
+        .navigationDestination(isPresented: $goToUserCarSelection) {
             SelectCarView()
                 .environmentObject(bookingFlow)
         }
-        // навигация для админа (после времени → сразу общий экран записи)
-        .navigationDestination(isPresented: $goToSummary) {
+        .navigationDestination(isPresented: $goToAdminSummary) {
             BookingSummaryView()
                 .environmentObject(bookingFlow)
+        }
+    }
+
+    // MARK: - Логика подтверждения времени
+
+    private func confirmTime() {
+        guard isFormValid,
+              let date = selectedDate,
+              let time = selectedTime else { return }
+
+        // сохраняем выбор в общий стейт
+        bookingFlow.selectedDate = date
+        bookingFlow.selectedTime = time
+
+        switch source {
+        case .fromMaster:
+            // Новый флоу: дальше действия зависят от роли
+            switch bookingFlow.userRole {
+            case .user:
+                // Пользователь — дальше выбирает авто
+                goToUserCarSelection = true
+            case .admin:
+                // Админ — сразу на общий Summary с телефоном
+                goToAdminSummary = true
+            }
+
+        case .fromSummary:
+            // Редактирование из Summary — просто возвращаемся назад
+            dismiss()
         }
     }
 
@@ -229,9 +252,6 @@ enum PartOfDay: String, CaseIterable {
     case evening = "Вечер"
 }
 
-// --- дальше твой старый TimeSectionView / CalendarMonthView / BookingCalendarMonth / BookingCalendarMock
-// можешь оставить их без изменений
-
 // MARK: - Секция времени (Утро/День/Вечер)
 
 struct TimeSectionView: View {
@@ -245,7 +265,6 @@ struct TimeSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
 
-            // Заголовок секции
             Button(action: toggleExpanded) {
                 HStack {
                     Text(part.rawValue)
@@ -261,18 +280,13 @@ struct TimeSectionView: View {
             }
             .buttonStyle(.plain)
 
-            // Слоты времени
             if isExpanded {
                 HStack(spacing: 12) {
                     ForEach(times, id: \.self) { time in
                         let isSelected = (time == selectedTime)
 
                         Button {
-                            if isSelected {
-                                selectedTime = nil
-                            } else {
-                                selectedTime = time
-                            }
+                            selectedTime = isSelected ? nil : time
                         } label: {
                             Text(time)
                                 .typography(AppFont.roll1)
@@ -289,7 +303,6 @@ struct TimeSectionView: View {
                 }
             }
 
-            // Тонкая линия-разделитель, только когда секция свернута
             if !isExpanded {
                 Rectangle()
                     .fill(Color("G4").opacity(0.35))
@@ -297,7 +310,6 @@ struct TimeSectionView: View {
                     .padding(.top, 1)
             }
         }
-        // Бóльший отступ снизу, когда секция свернута
         .padding(.bottom, isExpanded ? 12 : 24)
     }
 }
@@ -306,8 +318,8 @@ struct TimeSectionView: View {
 
 struct BookingCalendarMonth {
     let year: Int
-    let month: Int          // 1...12
-    let title: String       // "Ноябрь"
+    let month: Int
+    let title: String
     let closedDays: Set<Int>
 }
 
@@ -315,11 +327,10 @@ enum BookingCalendarMock {
     static let calendar: Calendar = {
         var c = Calendar.current
         c.locale = Locale(identifier: "ru_RU")
-        c.firstWeekday = 2   // понедельник
+        c.firstWeekday = 2
         return c
     }()
 
-    // доступные месяцы и закрытые дни
     static let months: [BookingCalendarMonth] = [
         BookingCalendarMonth(
             year: 2025,
@@ -341,11 +352,10 @@ enum BookingCalendarMock {
         return calendar.range(of: .day, in: .month, for: date)!.count
     }
 
-    /// Сдвиг, сколько пустых ячеек перед первым днём (0...6)
     static func firstWeekdayOffset(in month: BookingCalendarMonth) -> Int {
         let comps = DateComponents(year: month.year, month: month.month, day: 1)
         let date = calendar.date(from: comps)!
-        let weekday = calendar.component(.weekday, from: date) // 1...7
+        let weekday = calendar.component(.weekday, from: date)
         let offset = (weekday - calendar.firstWeekday + 7) % 7
         return offset
     }
@@ -372,8 +382,7 @@ struct CalendarMonthView: View {
         let weekdaySymbols = weekdayShortSymbols()
 
         LazyVGrid(columns: columns, spacing: 6) {
-
-            // ─── Ряд с днями недели ───
+            // Дни недели
             ForEach(weekdaySymbols, id: \.self) { symbol in
                 Text(symbol)
                     .typography(AppFont.roll1)
@@ -381,13 +390,13 @@ struct CalendarMonthView: View {
                     .frame(maxWidth: .infinity)
             }
 
-            // ─── Пустые ячейки до первого числа ───
+            // Пустые ячейки до первого числа
             ForEach(0..<firstDayOffset, id: \.self) { _ in
                 Color.clear
                     .frame(height: 32)
             }
 
-            // ─── Дни месяца ───
+            // Дни месяца
             ForEach(1...daysCount, id: \.self) { day in
                 dayCell(day: day)
             }
@@ -395,15 +404,12 @@ struct CalendarMonthView: View {
         .padding(.top, 4)
     }
 
-    // Короткие названия дней недели Пн, Вт...
     private func weekdayShortSymbols() -> [String] {
-        let symbols = calendar.shortStandaloneWeekdaySymbols // Вс, Пн, ...
-        // делаем порядок с понедельника
+        let symbols = calendar.shortStandaloneWeekdaySymbols
         let fromMonday = Array(symbols[1...]) + [symbols[0]]
         return fromMonday.map { String($0.prefix(2)) }
     }
 
-    // Одна ячейка дня
     private func dayCell(day: Int) -> some View {
         let components = DateComponents(year: month.year, month: month.month, day: day)
         guard let date = calendar.date(from: components) else {
@@ -430,12 +436,7 @@ struct CalendarMonthView: View {
         return AnyView(
             Button {
                 guard !isClosed else { return }
-
-                if isSelected {
-                    selectedDate = nil
-                } else {
-                    selectedDate = date
-                }
+                selectedDate = isSelected ? nil : date
             } label: {
                 ZStack {
                     if let bgColor {
@@ -458,7 +459,7 @@ struct CalendarMonthView: View {
 
 #Preview {
     NavigationStack {
-        BookingTimeView()
+        BookingTimeView(source: .fromMaster)
             .environmentObject(BookingFlowState())
             .preferredColorScheme(.dark)
     }

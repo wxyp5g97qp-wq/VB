@@ -107,24 +107,15 @@ struct AdminBookingsView: View {
             Text("Вы действительно хотите отменить запись?")
         }
 
-        // MARK: - sheet добавления записи
+        // MARK: - sheet добавления записи админом
         .sheet(isPresented: $showAddSheet) {
             NavigationStack {
-                BookingSummaryView(
-                    onSuccess: {
-                        // 1) закрываем модалку
-                        showAddSheet = false
-                        // 2) на всякий случай очищаем временный выбор
-                        bookingFlow.resetAll()
-                    }
-                )
-                .environmentObject(bookingFlow)
-                .onAppear {
-                    // важный момент: при заходе админом ставим нужную роль
-                    bookingFlow.userRole = .admin
-                    // и чистим предыдущий выбор
-                    bookingFlow.resetAll()
+                BookingSummaryView {
+                    // Это onSuccess из BookingSummaryView:
+                    // закрываем модалку и остаёмся на экране "Записи"
+                    showAddSheet = false
                 }
+                .environmentObject(bookingFlow)
             }
         }
     }
